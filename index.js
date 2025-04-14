@@ -159,6 +159,18 @@ app.get("/win-and-loss-percentage", async (req, res) => {
   res.json({result})
 })
 
+app.get("/complete-deck", async (req, res) => {
+  const result = await getCompleteDecks(30, "2025-03-26", "2025-04-14");
+  // console.log(`Win %: ${win}, Loss %: ${loss}`);
+  res.json({result})
+})
+
+app.get("/complete-deck", async (req, res) => {
+  const result = await getCompleteDecks(30, "2025-03-26", "2025-04-14");
+  // console.log(`Win %: ${win}, Loss %: ${loss}`);
+  res.json({result})
+})
+
 app.get("/", async (req, res) => {
   await Player.deleteMany({});
   try {
@@ -417,42 +429,123 @@ async function getWinAndLossPercentage(cardToSearch, timestamp1, timestamp2) {
 }
 
 // 2
-function getCompleteDecks(percentage, players, timestamp1, timestamp2) {
-  const decksWinsMap = {}
-  const decks = {}
-  let battleCount = 0
-  for (const player of players) {
-    for (const battle of player.battles) {
-      battleCount++
-      const target = parseClashTimestamp(battle.battleTime);
-      const start = parseClashTimestamp(timestamp1);
-      const end = parseClashTimestamp(timestamp2);
-      if (target >= start && target <= end) {
-        let hashedDeck = ''
-        let deck = []
-        if (battle.team[0].crowns > battle.opponent[0].crowns) {
-          hashedDeck = arrayHash(battle.team[0].cards, (card) => card.name)
-          deck = battle.team[0].cards.map((card) => card.name)
-        } else {
-          hashedDeck = arrayHash(battle.opponent[0].cards, (card) => card.name)
-          deck = battle.opponent[0].cards.map((card) => card.name)
+// function getCompleteDecks(percentage, players, timestamp1, timestamp2) {
+//   const decksWinsMap = {}
+//   const decks = {}
+//   let battleCount = 0
+//   for (const player of players) {
+//     for (const battle of player.battles) {
+//       battleCount++
+//       const target = parseClashTimestamp(battle.battleTime);
+//       const start = parseClashTimestamp(timestamp1);
+//       const end = parseClashTimestamp(timestamp2);
+//       if (target >= start && target <= end) {
+//         let hashedDeck = ''
+//         let deck = []
+//         if (battle.team[0].crowns > battle.opponent[0].crowns) {
+//           hashedDeck = arrayHash(battle.team[0].cards, (card) => card.name)
+//           deck = battle.team[0].cards.map((card) => card.name)
+//         } else {
+//           hashedDeck = arrayHash(battle.opponent[0].cards, (card) => card.name)
+//           deck = battle.opponent[0].cards.map((card) => card.name)
+//         }
+//         decksWinsMap[hashedDeck] = decksWinsMap[hashedDeck] + 1 || 1
+//         decks[hashedDeck] = deck
+//       }
+//     }
+//   }
+  
+//   // only above percentage
+//   let abovePercentage = []
+//   Object.entries(decksWinsMap).forEach((value) => {
+//     const [hashedDeck, wins] = value
+//     if ((wins/battleCount)*100 > percentage) {
+//       abovePercentage.push(decks[hashedDeck])
+//     }
+//   })
+
+//   return abovePercentage
+// }
+
+async function getCompleteDecks(percentage, timestamp1, timestamp2) {
+  const start = new Date(timestamp1);
+  const end = new Date(timestamp2);
+  
+  const result = await Player.aggregate([
+    { $unwind: "$battles" },
+  
+    {
+      $match: {
+        "battles.battleTime": { $gte: start, $lte: end }
+      }
+    },
+  
+    {
+      $project: {
+        deck: {
+          $map: {
+            input: {
+              $getField: {
+                field: "cards",
+                input: { $arrayElemAt: ["$battles.team", 0] }
+              }
+            },
+            as: "card",
+            in: "$$card.name"
+          }
+        },
+        victory: {
+          $gt: [
+            { $getField: { field: "crowns", input: { $arrayElemAt: ["$battles.team", 0] } } },
+            { $getField: { field: "crowns", input: { $arrayElemAt: ["$battles.opponent", 0] } } }
+          ]
         }
-        decksWinsMap[hashedDeck] = decksWinsMap[hashedDeck] + 1 || 1
-        decks[hashedDeck] = deck
+      }
+    },
+  
+    {
+      $project: {
+        deck: { $setUnion: ["$deck", []] },
+        victory: 1
+      }
+    },
+  
+    {
+      $group: {
+        _id: "$deck",
+        victories: {
+          $sum: { $cond: ["$victory", 1, 0] }
+        },
+        total: { $sum: 1 }
+      }
+    },
+  
+    {
+      $addFields: {
+        winRate: {
+          $multiply: [{ $divide: ["$victories", "$total"] }, 100]
+        }
+      }
+    },
+  
+    {
+      $match: {
+        winRate: { $gte: percentage } 
+      }
+    },  
+    {
+      $project: {
+        _id: 0,
+        deck: "$_id",
+        victories: 1,
+        total: 1,
+        winRate: 1
       }
     }
-  }
+  ]);
   
-  // only above percentage
-  let abovePercentage = []
-  Object.entries(decksWinsMap).forEach((value) => {
-    const [hashedDeck, wins] = value
-    if ((wins/battleCount)*100 > percentage) {
-      abovePercentage.push(decks[hashedDeck])
-    }
-  })
-
-  return abovePercentage
+  console.log(result)
+  return result
 }
 
 // 4
@@ -558,116 +651,6 @@ function arrayHash(arr, key) {
   }
   return ("" + sum).slice(0,16)
 }
-
-const test1 = [
-  {
-     "name":"Wall Breakers",
-     "id":26000058,
-     "level":6,
-     "starLevel":3,
-     "evolutionLevel":1,
-     "maxLevel":9,
-     "maxEvolutionLevel":1,
-     "rarity":"epic",
-     "elixirCost":2,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/_xPphEfC8eEwFNrfU3cMQG9-f5JaLQ31ARCA7l3XtW4.png",
-        "evolutionMedium":"https://api-assets.clashroyale.com/cardevolutions/300/_xPphEfC8eEwFNrfU3cMQG9-f5JaLQ31ARCA7l3XtW4.png"
-     }
-  },
-  {
-     "name":"Mega Knight",
-     "id":26000055,
-     "level":3,
-     "starLevel":2,
-     "evolutionLevel":1,
-     "maxLevel":6,
-     "maxEvolutionLevel":1,
-     "rarity":"legendary",
-     "elixirCost":7,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/O2NycChSNhn_UK9nqBXUhhC_lILkiANzPuJjtjoz0CE.png",
-        "evolutionMedium":"https://api-assets.clashroyale.com/cardevolutions/300/O2NycChSNhn_UK9nqBXUhhC_lILkiANzPuJjtjoz0CE.png"
-     }
-  },
-  {
-     "name":"Prince",
-     "id":26000016,
-     "level":6,
-     "starLevel":1,
-     "maxLevel":9,
-     "rarity":"epic",
-     "elixirCost":5,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/3JntJV62aY0G1Qh6LIs-ek-0ayeYFY3VItpG7cb9I60.png"
-     }
-  },
-  {
-     "name":"Archer Queen",
-     "id":26000072,
-     "level":1,
-     "maxLevel":4,
-     "rarity":"champion",
-     "elixirCost":5,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/p7OQmOAFTery7zCzlpDdm-LOD1kINTm42AwIHchZfWk.png"
-     }
-  },
-  {
-     "name":"Bandit",
-     "id":26000046,
-     "level":3,
-     "starLevel":1,
-     "maxLevel":6,
-     "rarity":"legendary",
-     "elixirCost":3,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/QWDdXMKJNpv0go-HYaWQWP6p8uIOHjqn-zX7G0p3DyM.png"
-     }
-  },
-  {
-     "name":"Goblin Gang",
-     "id":26000041,
-     "level":11,
-     "starLevel":3,
-     "maxLevel":14,
-     "rarity":"common",
-     "elixirCost":3,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/NHflxzVAQT4oAz7eDfdueqpictb5vrWezn1nuqFhE4w.png"
-     }
-  },
-  {
-     "name":"Arrows",
-     "id":28000001,
-     "level":11,
-     "starLevel":3,
-     "maxLevel":14,
-     "rarity":"common",
-     "elixirCost":3,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/Flsoci-Y6y8ZFVi5uRFTmgkPnCmMyMVrU7YmmuPvSBo.png"
-     }
-  },
-  {
-     "name":"Zap",
-     "id":28000008,
-     "level":11,
-     "starLevel":1,
-     "maxLevel":14,
-     "maxEvolutionLevel":1,
-     "rarity":"common",
-     "elixirCost":2,
-     "iconUrls":{
-        "medium":"https://api-assets.clashroyale.com/cards/300/7dxh2-yCBy1x44GrBaL29vjqnEEeJXHEAlsi5g6D1eY.png",
-        "evolutionMedium":"https://api-assets.clashroyale.com/cardevolutions/300/7dxh2-yCBy1x44GrBaL29vjqnEEeJXHEAlsi5g6D1eY.png"
-     }
-  }
-]
-// console.log(arrayHash(test1, (obj) => obj.name))
-// const t = {}
-// t[arrayHash(test1, (obj) => obj.name)] = 0
-// console.log(t)
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
