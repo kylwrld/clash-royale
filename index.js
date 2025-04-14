@@ -140,10 +140,23 @@ const app = express()
 //   res.send(tenPlayers)
 // })
 
+app.get("/all", async (req, res) => {
+  res.json(await Player.find())
+  
+  // Player.find({}, function(err, players) {
+  //   var playerMap = {};
+
+  //   players.forEach(function(player) {
+  //     playerMap[player._id] = player;
+  //   });
+
+  //   res.send(playerMap);  
+  // });
+})
 app.get("/win-and-loss-percentage", async (req, res) => {
-  await getWinAndLossPercentage("Mega Knight", "2025-04-01", "2025-04-07");
+  const result = await getWinAndLossPercentage("Mega Knight", "2025-03-26", "2025-04-14");
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
-  res.json({})
+  res.json({result})
 })
 
 app.get("/", async (req, res) => {
@@ -278,304 +291,129 @@ function parseClashTimestamp(timestamp) {
 // }
 
 async function getWinAndLossPercentage(cardToSearch, timestamp1, timestamp2) {
-  const start = new Date("2025-03-01T00:00:00.000Z");
-  const end = new Date("2025-04-12T23:59:59.000Z");
-  // const start = new Date(timestamp1);
-  // const end = new Date(timestamp2);
+  const start = new Date(timestamp1);
+  const end = new Date(timestamp2);
   
-  // const raw = await mongoose.connection.db.collection('players')
-  // .aggregate([
-  //   { $unwind: "$battles" },
-  //   {
-  //     $project: {
-  //       battleTime: "$battles.battleTime",
-  //       team: "$battles.team",
-  //       opponent: "$battles.opponent"
-  //     }
-  //   }
-  // ])
-  // .toArray();
-
-  // console.log(raw, raw.length);
-
-  // const results = await mongoose.connection.db.collection('players').aggregate([
-  //   { $unwind: "$battles" },
-  //     {
-  //       $match: {
-  //         "battles.battleTime": {
-  //           $gte: new Date(start),  // start = ISO string or Date object
-  //           $lte: new Date(end)
-  //         }
-  //       }
-  //     },
-  //     {
-  //       $project: {
-  //         battleTime: "$battles.battleTime",
-  //         teamCards: "$battles.team.0.cards",
-  //         opponentCards: "$battles.opponent.0.cards",
-  //         teamCrowns: "$battles.team.0.crowns",
-  //         opponentCrowns: "$battles.opponent.0.crowns"
-  //       }
-  //     },
-  //     {
-  //       $addFields: {
-  //         teamCardNames: {
-  //           $map: {
-  //             input: "$teamCards",
-  //             as: "card",
-  //             in: "$$card.name"
-  //           }
-  //         },
-  //         opponentCardNames: {
-  //           $map: {
-  //             input: "$opponentCards",
-  //             as: "card",
-  //             in: "$$card.name"
-  //           }
-  //         }
-  //       }
-  //     },
-  //     {
-  //       $match: {
-  //         $or: [
-  //           { teamCardNames: cardToSearch },
-  //           { opponentCardNames: cardToSearch }
-  //         ]
-  //       }
-  //     },
-  //     {
-  //       $project: {
-  //         winner: {
-  //           $cond: [
-  //             {
-  //               $or: [
-  //                 {
-  //                   $and: [
-  //                     { $in: [cardToSearch, "$teamCardNames"] },
-  //                     { $gt: ["$teamCrowns", "$opponentCrowns"] }
-  //                   ]
-  //                 },
-  //                 {
-  //                   $and: [
-  //                     { $in: [cardToSearch, "$opponentCardNames"] },
-  //                     { $gt: ["$opponentCrowns", "$teamCrowns"] }
-  //                   ]
-  //                 }
-  //               ]
-  //             },
-  //             1,
-  //             0
-  //           ]
-  //         }
-  //       }
-  //     },
-  //     {
-  //       $group: {
-  //         _id: null,
-  //         wins: { $sum: "$winner" },
-  //         total: { $sum: 1 }
-  //       }
-  //     },
-  //     {
-  //       $project: {
-  //         _id: 0,
-  //         winPercentage: {
-  //           $cond: [
-  //             { $eq: ["$total", 0] },
-  //             0,
-  //             { $multiply: [{ $divide: ["$wins", "$total"] }, 100] }
-  //           ]
-  //         },
-  //         lossPercentage: {
-  //           $cond: [
-  //             { $eq: ["$total", 0] },
-  //             0,
-  //             { $subtract: [100, { $multiply: [{ $divide: ["$wins", "$total"] }, 100] }] }
-  //           ]
-  //         }
-  //       }
-  //     }
-  //   ]).toArray()
-    
-  // const results = await mongoose.connection.db
-  // .collection('players')
-  // .aggregate([
-  //   // Step 1: Unwind the battles array
-  //   { $unwind: "$battles" },
-
-  //   // Step 2: Match battles by timestamp
-  //   {
-  //     $match: {
-  //       "battles.battleTime": { $gte: start, $lte: end }
-  //     }
-  //   },
-
-  //   // Step 3: Project team and opponent card names
-  //   {
-  //     $project: {
-  //       battleTime: "$battles.battleTime",
-  //       teamCardNames: {
-  //         $map: {
-  //           input: "$battles.team.cards",
-  //           as: "card",
-  //           in: "$$card.name"
-  //         }
-  //       },
-  //       opponentCardNames: {
-  //         $map: {
-  //           input: "$battles.opponent.cards",
-  //           as: "card",
-  //           in: "$$card.name"
-  //         }
-  //       },
-  //       teamCrowns: "$battles.team.crowns",
-  //       opponentCrowns: "$battles.opponent.crowns"
-  //     }
-  //   },
-
-  //   // Step 4: Match battles that involve the cardToSearch
-  //   {
-  //     $match: {
-  //       $or: [
-  //         { teamCardNames: { $in: [cardToSearch] } },
-  //         { opponentCardNames: { $in: [cardToSearch] } }
-  //       ]
-  //     }
-  //   },
-
-  //   // Step 5: Calculate the winner
-  //   {
-  //     $project: {
-  //       winner: {
-  //         $cond: [
-  //           {
-  //             $or: [
-  //               // Team wins
-  //               {
-  //                 $and: [
-  //                   { $in: [cardToSearch, "$teamCardNames"] },
-  //                   { $gt: ["$teamCrowns", "$opponentCrowns"] }
-  //                 ]
-  //               },
-  //               // Opponent wins
-  //               {
-  //                 $and: [
-  //                   { $in: [cardToSearch, "$opponentCardNames"] },
-  //                   { $gt: ["$opponentCrowns", "$teamCrowns"] }
-  //                 ]
-  //               }
-  //             ]
-  //           },
-  //           1,  // If true, it's a win
-  //           0   // If false, it's a loss
-  //         ]
-  //       }
-  //     }
-  //   },
-
-  //   // Step 6: Group by win/loss and calculate the totals
-  //   {
-  //     $group: {
-  //       _id: null,
-  //       wins: { $sum: "$winner" },
-  //       total: { $sum: 1 }
-  //     }
-  //   },
-
-  //   // Step 7: Calculate win and loss percentages
-  //   {
-  //     $project: {
-  //       _id: 0,
-  //       winPercentage: {
-  //         $cond: [
-  //           { $eq: ["$total", 0] },
-  //           0,
-  //           { $multiply: [{ $divide: ["$wins", "$total"] }, 100] }
-  //         ]
-  //       },
-  //       lossPercentage: {
-  //         $cond: [
-  //           { $eq: ["$total", 0] },
-  //           0,
-  //           { $subtract: [100, { $multiply: [{ $divide: ["$wins", "$total"] }, 100] }] }
-  //         ]
-  //       }
-  //     }
-  //   }
-  // ])
-  // .toArray();
-
-  // console.log(results);
-  
-  //   const battles = await mongoose.connection.db
-  //   .collection('players')
-  //   .aggregate([
-  //     // Step 1: Unwind the battles array so each battle is in a separate document
-  //     { $unwind: "$battles" },
-
-  //     // Step 2: Optional - Match by timestamp range (if needed)
-  //     {
-  //       $match: {
-  //         "battles.battleTime": {
-  //           $gte: new Date("2025-04-01"), // Start date
-  //           $lte: new Date("2025-04-07")  // End date
-  //         }
-  //       }
-  //     },
-
-  //     // Step 3: Project necessary fields (team, opponent, etc.)
-  //     {
-  //       $project: {
-  //         battleTime: "$battles.battleTime",
-  //         team: "$battles.team",
-  //         opponent: "$battles.opponent"
-  //       }
-  //     },
-
-  //     // Step 4: Optional - You can add more stages (e.g., filtering, sorting, etc.)
-  //   ])
-  //   .toArray();
-
-  // console.log(battles);
-
-  console.log(start, end)
-  const results = await mongoose.connection.db
-  .collection('players')
+  const result = await Player
   .aggregate([
     { $unwind: "$battles" },
     {
-      $project: {
-        teamCardNames: {
-          $map: {
-            input: "$battles.team.0.cards",
-            as: "card",
-            in: "$$card.name"
-          }
-        },
-        opponentCardNames: {
-          $map: {
-            input: "$battles.opponent.0.cards",
-            as: "card",
-            in: "$$card.name"
-          }
+      $match: {
+        "battles.battleTime": {
+          $gte: start,
+          $lte: end  
         }
       }
     },
     {
+      $project: {
+        teamCrowns: {
+          $getField: {
+            field: "crowns",
+            input: { $arrayElemAt: ["$battles.team", 0] }
+          }
+        },
+        opponentCrowns: {
+          $getField: {
+            field: "crowns",
+            input: { $arrayElemAt: ["$battles.opponent", 0] }
+          }
+        },
+        containsCard: {
+          $or: [
+            {
+              $gt: [
+                {
+                  $size: {
+                    $filter: {
+                      input: {
+                        $ifNull: [
+                          {
+                            $getField: {
+                              field: "cards",
+                              input: { $arrayElemAt: ["$battles.team", 0] }
+                            }
+                          },
+                          []
+                        ]
+                      },
+                      as: "card",
+                      cond: { $eq: ["$$card.name", cardToSearch] }
+                    }
+                  }
+                },
+                0
+              ]
+            },
+            {
+              $gt: [
+                {
+                  $size: {
+                    $filter: {
+                      input: {
+                        $ifNull: [
+                          {
+                            $getField: {
+                              field: "cards",
+                              input: { $arrayElemAt: ["$battles.opponent", 0] }
+                            }
+                          },
+                          []
+                        ]
+                      },
+                      as: "card",
+                      cond: { $eq: ["$$card.name", cardToSearch] }
+                    }
+                  }
+                },
+                0
+              ]
+            }
+          ]
+        }          
+      }
+    },
+    {
       $match: {
-        $or: [
-          { teamCardNames: { $in: [cardToSearch] } },
-          { opponentCardNames: { $in: [cardToSearch] } }
-        ]
+        containsCard: true
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalMatches: { $sum: 1 },
+        victories: {
+          $sum: {
+            $cond: [{ $gt: ["$teamCrowns", "$opponentCrowns"] }, 1, 0]
+          }
+        },
+        defeats: {
+          $sum: {
+            $cond: [{ $lt: ["$teamCrowns", "$opponentCrowns"] }, 1, 0]
+          }
+        }
+      }
+    },
+  
+    {
+      $project: {
+        _id: 0,
+        totalMatches: 1,
+        victories: 1,
+        defeats: 1,
+        winPercentage: {
+          $multiply: [{ $divide: ["$victories", "$totalMatches"] }, 100]
+        },
+        lossPercentage: {
+          $multiply: [{ $divide: ["$defeats", "$totalMatches"] }, 100]
+        }
       }
     }
   ])
-  .toArray();
-
-  console.log(results.length, "battles contain", cardToSearch);
-  console.log("here", results.winPercentage, results.lossPercentage)
   
-  return [results.winPercentage, results.lossPercentage]
+  console.log(result[0])  
+
+  return [result[0].winPercentage, result[0].lossPercentage]
 }
 
 // 2
