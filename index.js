@@ -142,44 +142,29 @@ const app = express()
 
 app.get("/all", async (req, res) => {
   res.json(await Player.find())
-  
-  // Player.find({}, function(err, players) {
-  //   var playerMap = {};
-
-  //   players.forEach(function(player) {
-  //     playerMap[player._id] = player;
-  //   });
-
-  //   res.send(playerMap);  
-  // });
 })
 app.get("/1", async (req, res) => {
   const result = await getWinAndLossPercentage("Mega Knight", "2025-03-26", "2025-04-14");
-  // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
 app.get("/2", async (req, res) => {
   const result = await getCompleteDecks(30, "2025-03-26", "2025-04-14");
-  // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
 app.get("/3", async (req, res) => {
   const result = await getLossCombo(["Zap", "Bandit"], "2025-03-26", "2025-04-14");
-  // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
 app.get("/4", async (req, res) => {
   const result = await getWinCount("Zap", 20)
-  // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
 app.get("/5", async (req, res) => {
   const result = await getWinComboGreaterThanPercentage(2, 10, "2025-03-26", "2025-04-14")
-  // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
