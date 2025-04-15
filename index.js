@@ -153,26 +153,32 @@ app.get("/all", async (req, res) => {
   //   res.send(playerMap);  
   // });
 })
-app.get("/win-and-loss-percentage", async (req, res) => {
+app.get("/1", async (req, res) => {
   const result = await getWinAndLossPercentage("Mega Knight", "2025-03-26", "2025-04-14");
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
-app.get("/complete-deck", async (req, res) => {
+app.get("/2", async (req, res) => {
   const result = await getCompleteDecks(30, "2025-03-26", "2025-04-14");
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
-app.get("/loss-combo", async (req, res) => {
+app.get("/3", async (req, res) => {
   const result = await getLossCombo(["Zap", "Bandit"], "2025-03-26", "2025-04-14");
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
 
-app.get("/win-count", async (req, res) => {
+app.get("/4", async (req, res) => {
   const result = await getWinCount("Zap", 20)
+  // console.log(`Win %: ${win}, Loss %: ${loss}`);
+  res.json({result})
+})
+
+app.get("/5", async (req, res) => {
+  const result = await getWinComboGreaterThanPercentage(2, 10, "2025-03-26", "2025-04-14")
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
@@ -556,6 +562,7 @@ async function getCompleteDecks(percentage, timestamp1, timestamp2) {
   return result
 }
 
+// 3
 async function getLossCombo(cards, timestamp1, timestamp2) {
   const start = new Date(timestamp1);
   const end = new Date(timestamp2);
@@ -631,10 +638,6 @@ async function getLossCombo(cards, timestamp1, timestamp2) {
 }
 
 // 4
-// Calcule a quantidade de vitórias envolvendo a carta X (parâmetro) nos
-// casos em que o vencedor possui Z% (parâmetro) menos troféus do que
-// o perdedor, a partida durou menos de 2 minutos, e o perdedor 
-// derrubou ao menos duas torres do adversário.
 // function getWinCount(cardToSearch, players, percentage) {
 //   let winCount = 0 
 //   const towerHealth = [1400, 1512, 1624, 1750, 1890, 
@@ -660,18 +663,10 @@ async function getLossCombo(cards, timestamp1, timestamp2) {
 //   }
 //   return winCount
 // }
-
 async function getWinCount(cardToSearch, percentage) {
   const result = await Player.aggregate([
     { $unwind: "$battles" },
-  
-    {
-      $match: {
-        "battles.battleTime": { $exists: true },
-        "battles.team.0": { $exists: true },
-        "battles.opponent.0": { $exists: true }
-      }
-    },
+
     {
       $project: {
         battleTime: "$battles.battleTime",
@@ -840,80 +835,147 @@ async function getWinCount(cardToSearch, percentage) {
   return result
 }
 
-
-
-const estimateBattleDuration = (battleType, teamCrowns, opponentCrowns) => {
-  const totalCrowns = teamCrowns + opponentCrowns;
-  const maxCrowns = Math.max(teamCrowns, opponentCrowns);
-
-  // Instant win (3-crown) often ends < 2min
-  if (maxCrowns === 3) return 90;
-
-  // If game mode is sudden death, it's short by design
-  if (battleType === "suddenDeath") return 60;
-
-  // Low crown count usually means it went full time or overtime
-  if (totalCrowns <= 1) {
-    switch (battleType) {
-      case "pvp":
-      case "trail":
-      case "pathOfLegend":
-      case "tournament":
-      case "seasonalBattle":
-      case "clanWarWarDay":
-      case "riverRacePvp":
-      case "riverRaceDuel":
-      case "riverRaceDuelColosseum":
-      case "clanWarCollectionDay":
-        return 240; // Very likely a full-length match
+// 5
+async function getWinComboGreaterThanPercentage(n, percentage, timestamp1, timestamp2) {
+  const start = new Date(timestamp1);
+  const end = new Date(timestamp2);
+  
+  function getCombos(deck, size) {
+    const results = [];
+    const combine = (start, path) => {
+      if (path.length === size) {
+        results.push([...path].sort());
+        return;
+      }
+      for (let i = start; i < deck.length; i++) {
+        combine(i + 1, [...path, deck[i]]);
+      }
+    };
+    combine(0, []);
+    return results;
+  }
+  
+  async function calculateWinningCombos(start, end, comboSize, minWinRate) {
+    const players = await mongoose.connection.collection("players").find({
+      "battles.battleTime": { $gte: start, $lte: end }
+    }).toArray();
+    
+    const comboStats = new Map();
+  
+    for (const player of players) {
+      for (const battle of player.battles) {
+  
+        const team = battle.team?.[0];
+        const opponent = battle.opponent?.[0];
+        if (!team?.cards || !opponent) continue;
+  
+        const teamCrowns = team.crowns || 0;
+        const opponentCrowns = opponent.crowns || 0;
+  
+        const isVictory = teamCrowns > opponentCrowns;
+        const cardNames = team.cards.map(c => c.name);
+        console.log(cardNames, comboSize)
+        const combos = getCombos(cardNames, comboSize);
+        
+  
+        for (const combo of combos) {
+          const key = combo.join("|");
+          const data = comboStats.get(key) || { victories: 0, total: 0, deck: combo };
+          data.total++;
+          if (isVictory) data.victories++;
+          comboStats.set(key, data);
+        }
+      }
     }
+    
+    const results = Array.from(comboStats.values())
+      .map(c => ({
+        ...c,
+        winRate: (c.victories / c.total) * 100
+      }))
+      .filter(c => c.winRate >= minWinRate)
+      .sort((a, b) => b.winRate - a.winRate);
+  
+    return results;
   }
 
-  // Fast-paced modes, often end <2min
-  const fastModes = [
-    "tripleElixir",
-    "doubleElixir",
-    "rampUp",
-    "casual",
-    "pvp2v2",
-    "clanMate",
-    "challenge",
-    "friendly",
-    "clanMate",
-    "boatBattle",
-    "boatBattlePractice",
-    "practice",
-  ];
-
-  if (fastModes.includes(battleType)) return 120;
-
-  // Survival and others that can run long
-  if (battleType === "survival") return 300;
-
-  // Tutorial or PVE — generally short
-  if (battleType === "tutorial" || battleType === "pve") return 120;
-
-  // Fallback
-  return 180;
-};
-
-
-function charSum(s) {
-  var i, sum = 0;
-  for (i = 0; i < s.length; i++) {
-    sum += (s.charCodeAt(i) * (i+1));
-  }
-  return sum
+  const results = await calculateWinningCombos(start, end, n, 60);
+  
+  return results
 }
 
-function arrayHash(arr, key) {
-  var i, sum = 0
-  for (i = 0; i < arr.length; i++) {
-    var cs = charSum(key(arr[i]))
-    sum = sum + (65027 / cs)
-  }
-  return ("" + sum).slice(0,16)
-}
+// const estimateBattleDuration = (battleType, teamCrowns, opponentCrowns) => {
+//   const totalCrowns = teamCrowns + opponentCrowns;
+//   const maxCrowns = Math.max(teamCrowns, opponentCrowns);
+
+//   // Instant win (3-crown) often ends < 2min
+//   if (maxCrowns === 3) return 90;
+
+//   // If game mode is sudden death, it's short by design
+//   if (battleType === "suddenDeath") return 60;
+
+//   // Low crown count usually means it went full time or overtime
+//   if (totalCrowns <= 1) {
+//     switch (battleType) {
+//       case "pvp":
+//       case "trail":
+//       case "pathOfLegend":
+//       case "tournament":
+//       case "seasonalBattle":
+//       case "clanWarWarDay":
+//       case "riverRacePvp":
+//       case "riverRaceDuel":
+//       case "riverRaceDuelColosseum":
+//       case "clanWarCollectionDay":
+//         return 240; // Very likely a full-length match
+//     }
+//   }
+
+//   // Fast-paced modes, often end <2min
+//   const fastModes = [
+//     "tripleElixir",
+//     "doubleElixir",
+//     "rampUp",
+//     "casual",
+//     "pvp2v2",
+//     "clanMate",
+//     "challenge",
+//     "friendly",
+//     "clanMate",
+//     "boatBattle",
+//     "boatBattlePractice",
+//     "practice",
+//   ];
+
+//   if (fastModes.includes(battleType)) return 120;
+
+//   // Survival and others that can run long
+//   if (battleType === "survival") return 300;
+
+//   // Tutorial or PVE — generally short
+//   if (battleType === "tutorial" || battleType === "pve") return 120;
+
+//   // Fallback
+//   return 180;
+// };
+
+
+// function charSum(s) {
+//   var i, sum = 0;
+//   for (i = 0; i < s.length; i++) {
+//     sum += (s.charCodeAt(i) * (i+1));
+//   }
+//   return sum
+// }
+
+// function arrayHash(arr, key) {
+//   var i, sum = 0
+//   for (i = 0; i < arr.length; i++) {
+//     var cs = charSum(key(arr[i]))
+//     sum = sum + (65027 / cs)
+//   }
+//   return ("" + sum).slice(0,16)
+// }
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
