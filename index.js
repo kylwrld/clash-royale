@@ -171,6 +171,12 @@ app.get("/loss-combo", async (req, res) => {
   res.json({result})
 })
 
+app.get("/win-count", async (req, res) => {
+  const result = await getWinCount("Zap", 20)
+  // console.log(`Win %: ${win}, Loss %: ${loss}`);
+  res.json({result})
+})
+
 app.get("/", async (req, res) => {
   await Player.deleteMany({});
   try {
@@ -195,6 +201,7 @@ app.get("/", async (req, res) => {
       const cleanBattlelog = battlelog.slice(0, 20).map(battle => ({
         battleTime: battle.battleTime,
         team: battle.team.map(teamEntry => ({
+          startingTrophies: teamEntry.startingTrophies,
           crowns: teamEntry.crowns,
           cards: teamEntry.cards.map(card => ({
             name: card.name,
@@ -204,6 +211,7 @@ app.get("/", async (req, res) => {
           }))
         })),
         opponent: battle.opponent.map(opponentEntry => ({
+          startingTrophies: opponentEntry.startingTrophies,
           crowns: opponentEntry.crowns,
           cards: opponentEntry.cards.map(card => ({
             name: card.name,
@@ -627,31 +635,212 @@ async function getLossCombo(cards, timestamp1, timestamp2) {
 // casos em que o vencedor possui Z% (parâmetro) menos troféus do que
 // o perdedor, a partida durou menos de 2 minutos, e o perdedor 
 // derrubou ao menos duas torres do adversário.
-function getWinCount(cardToSearch, players, percentage) {
-  let winCount = 0 
-  const towerHealth = [1400, 1512, 1624, 1750, 1890, 
-                      2030, 2184, 2352, 2534, 2786,
-                      3052, 3346, 3668, 4032, 4424]
+// function getWinCount(cardToSearch, players, percentage) {
+//   let winCount = 0 
+//   const towerHealth = [1400, 1512, 1624, 1750, 1890, 
+//                       2030, 2184, 2352, 2534, 2786,
+//                       3052, 3346, 3668, 4032, 4424]
 
-  for (const player of players) {
-    for (const battle of player.battles) {
-      const duration = estimateBattleDuration(battle.type, battle.team[0].crowns, battle.opponent[0].crowns)
-      if (duration <= 120) {
-        const winner = battle.team[0].crowns > battle.opponent[0].crowns ? battle.team[0] : battle.opponent[0] 
-        const loser = battle.team[0].crowns > battle.opponent[0].crowns ? battle.opponent[0] : battle.team[0] 
-        if (loser.princessTowersHitPoints === null || loser.princessTowersHitPoints.length < 2) continue
-        for (const card of winner.cards) {
-          if (card.name !== cardToSearch) continue
-          const loserTrophies = (loser.startingTrophies-(loser.startingTrophies*(percentage/100)))
-          const percentageLessTrophies = winner.startingTrophies < loserTrophies
-          const twoTowersTaken = towerHealth.includes(loser.princessTowersHitPoints[0]) && towerHealth.includes(loser.princessTowersHitPoints[1])
-          if (percentageLessTrophies && twoTowersTaken) winCount++
+//   for (const player of players) {
+//     for (const battle of player.battles) {
+//       const duration = estimateBattleDuration(battle.type, battle.team[0].crowns, battle.opponent[0].crowns)
+//       if (duration <= 120) {
+//         const winner = battle.team[0].crowns > battle.opponent[0].crowns ? battle.team[0] : battle.opponent[0] 
+//         const loser = battle.team[0].crowns > battle.opponent[0].crowns ? battle.opponent[0] : battle.team[0] 
+//         if (loser.princessTowersHitPoints === null || loser.princessTowersHitPoints.length < 2) continue
+//         for (const card of winner.cards) {
+//           if (card.name !== cardToSearch) continue
+//           const loserTrophies = (loser.startingTrophies-(loser.startingTrophies*(percentage/100)))
+//           const percentageLessTrophies = winner.startingTrophies < loserTrophies
+//           const twoTowersTaken = towerHealth.includes(loser.princessTowersHitPoints[0]) && towerHealth.includes(loser.princessTowersHitPoints[1])
+//           if (percentageLessTrophies && twoTowersTaken) winCount++
+//         }
+//       }
+//     }
+//   }
+//   return winCount
+// }
+
+async function getWinCount(cardToSearch, percentage) {
+  const result = await Player.aggregate([
+    { $unwind: "$battles" },
+  
+    {
+      $match: {
+        "battles.battleTime": { $exists: true },
+        "battles.team.0": { $exists: true },
+        "battles.opponent.0": { $exists: true }
+      }
+    },
+    {
+      $project: {
+        battleTime: "$battles.battleTime",
+        team: { $arrayElemAt: ["$battles.team", 0] },
+        opponent: { $arrayElemAt: ["$battles.opponent", 0] }
+      }
+    },
+
+    {
+      $project: {
+        teamCrowns: "$team.crowns",
+        opponentCrowns: "$opponent.crowns",
+        teamTrophies: "$team.startingTrophies",
+        opponentTrophies: "$opponent.startingTrophies",
+        isTeamWinner: { $gt: ["$teamCrowns", "$opponentCrowns"] },
+        teamDeck: {
+          $map: {
+            input: { $ifNull: ["$team.cards", []] },
+            as: "card",
+            in: "$$card.name"
+          }
+        },
+        opponentDeck: {
+          $map: {
+            input: { $ifNull: ["$opponent.cards", []] },
+            as: "card",
+            in: "$$card.name"
+          }
+        },
+        battleType: "$battles.type"
+      }
+    },
+  
+    {
+      $addFields: {
+        duration: {
+          $switch: {
+            branches: [
+              {
+                // Instant win (3 crowns)
+                case: { $eq: [{ $max: ["$teamCrowns", "$opponentCrowns"] }, 3] },
+                then: 90
+              },
+              {
+                // Sudden death mode
+                case: { $eq: ["$battleType", "suddenDeath"] },
+                then: 60
+              },
+              {
+                // Low crown count games usually lasted full time
+                case: {
+                  $and: [
+                    { $lte: [{ $sum: ["$teamCrowns", "$opponentCrowns"] }, 1] },
+                    {
+                      $in: [
+                        "$battleType",
+                        [
+                          "pvp",
+                          "trail",
+                          "pathOfLegend",
+                          "tournament",
+                          "seasonalBattle",
+                          "clanWarWarDay",
+                          "riverRacePvp",
+                          "riverRaceDuel",
+                          "riverRaceDuelColosseum",
+                          "clanWarCollectionDay"
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                then: 240
+              },
+              {
+                // Fast-paced modes
+                case: {
+                  $in: [
+                    "$battleType",
+                    [
+                      "tripleElixir",
+                      "doubleElixir",
+                      "rampUp",
+                      "casual",
+                      "pvp2v2",
+                      "clanMate",
+                      "challenge",
+                      "friendly",
+                      "boatBattle",
+                      "boatBattlePractice",
+                      "practice"
+                    ]
+                  ]
+                },
+                then: 120
+              },
+              {
+                // Survival and other long modes
+                case: { $eq: ["$battleType", "survival"] },
+                then: 300
+              },
+              {
+                // Tutorial or PVE (generally short)
+                case: { $in: ["$battleType", ["tutorial", "pve"]] },
+                then: 120
+              }
+            ],
+            default: 180 // Default fallback duration
+          }
+        },
+        winnerDeck: {
+          $cond: ["$isTeamWinner", "$teamDeck", "$opponentDeck"]
+        },
+        loserTrophies: {
+          $cond: ["$isTeamWinner", "$opponentTrophies", "$teamTrophies"]
+        },
+        winnerTrophies: {
+          $cond: ["$isTeamWinner", "$teamTrophies", "$opponentTrophies"]
+        },
+        loserCrowns: {
+          $cond: ["$isTeamWinner", "$opponentCrowns", "$teamCrowns"]
+        } 
+      }
+    },
+
+    {
+      $match: {
+        duration: { $lt: 121 },
+        loserCrowns: { $gte: 2 },
+        $expr: {
+          $and: [
+            { $in: [cardToSearch, "$winnerDeck"] },
+            {
+              $lte: [
+                "$winnerTrophies",
+                {
+                  $multiply: [
+                    "$loserTrophies",
+                    1 - percentage / 100
+                  ]
+                }
+              ]
+            }
+          ]
         }
       }
+    },
+  
+    {
+      $group: {
+        _id: null,
+        victoryCount: { $sum: 1 }
+      }
+    },
+  
+    {
+      $project: {
+        _id: 0,
+        victoryCount: 1
+      }
     }
-  }
-  return winCount
+  
+
+  ]);
+  
+  return result
 }
+
+
 
 const estimateBattleDuration = (battleType, teamCrowns, opponentCrowns) => {
   const totalCrowns = teamCrowns + opponentCrowns;
