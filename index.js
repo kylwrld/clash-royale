@@ -145,7 +145,7 @@ app.get("/all", async (req, res) => {
   res.json(await Player.find())
 })
 app.get("/1", async (req, res) => {
-  const result = await getWinAndLossPercentage("Mega Knight", "2025-03-26", "2025-04-14");
+  const result = await getWinAndLossPercentage("Zap", "2025-03-26", "2025-04-14");
   res.json({result})
 })
 
@@ -289,6 +289,7 @@ app.get("/add-2", async (req, res) => {
   res.json({result})
 })
 
+// Cartas com mais porcentagem de vitória
 app.get("/add-3", async (req, res) => {
   const startDate = new Date("2025-04-01");
   const endDate = new Date("2025-04-13");
@@ -343,8 +344,6 @@ app.get("/add-3", async (req, res) => {
         $project: {
           carta: "$_id",
           _id: 0,
-          total,
-          wins,
           winRate: {
             $cond: [
               { $eq: ["$total", 0] },
