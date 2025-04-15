@@ -1,7 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
-
 import dotenv from 'dotenv';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -104,6 +104,7 @@ async function fetchApi(url, props = {}) {
 }
 
 const app = express()
+app.use(cors());
 
 // app.get('/', async (req, res) => {
 //   // all leaderboards
@@ -165,6 +166,198 @@ app.get("/4", async (req, res) => {
 
 app.get("/5", async (req, res) => {
   const result = await getWinComboGreaterThanPercentage(2, 10, "2025-03-26", "2025-04-14")
+  res.json({result})
+})
+
+// Carta mais usada em um período de tempo
+app.get("/add-1", async (req, res) => {
+  const start = new Date("2025-03-26");
+  const end = new Date("2025-04-14");
+
+  const result = await Player
+  .aggregate([
+    { $unwind: "$battles" },
+    {
+      $match: {
+        "battles.battleTime": {
+          $gte: start,
+          $lte: end  
+        }
+      }
+    },
+    {
+      $project: {
+        teamCards: {
+          $getField: {
+            field: "cards",
+            input: { $arrayElemAt: ["$battles.team", 0] }
+          }
+        },
+        opponentCards: {
+          $getField: {
+            field: "cards",
+            input: { $arrayElemAt: ["$battles.opponent", 0] }
+          }
+        },          
+      }
+    },
+    {
+      $project: {
+        allCards: {
+          $concatArrays: [
+            "$teamCards",
+            "$opponentCards"
+          ]
+        }
+      }
+    },
+    { $unwind: "$allCards" },
+    { $group: {
+        _id: "$allCards.name",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: 10 }
+  ])
+
+  res.json({result})
+})
+
+// Quantidade de vitórias por carta
+app.get("/add-2", async (req, res) => {
+  const result = await Player
+  .aggregate([
+    { $unwind: "$battles" },
+    {
+      $project: {
+        teamCards: {
+          $getField: {
+            field: "cards",
+            input: { $arrayElemAt: ["$battles.team", 0] }
+          }
+        },
+        opponentCards: {
+          $getField: {
+            field: "cards",
+            input: { $arrayElemAt: ["$battles.opponent", 0] }
+          }
+        },        
+        teamCrowns: {
+          $getField: {
+            field: "crowns",
+            input: { $arrayElemAt: ["$battles.team", 0] }
+          }
+        },
+        opponentCrowns: {
+          $getField: {
+            field: "crowns",
+            input: { $arrayElemAt: ["$battles.opponent", 0] }
+          }
+        },        
+      }
+    },
+    {
+      $facet: {
+        teamWins: [
+          { $match: { $expr: { $gt: ["$teamCrowns", "$opponentCrowns"] } } },
+          { $unwind: "$teamCards" },
+          { $group: { _id: "$teamCards.name", wins: { $sum: 1 } } }
+        ],
+        opponentWins: [
+          { $match: { $expr: { $gt: ["$opponentCrowns", "$teamCrowns"] } } },
+          { $unwind: "$opponentCards" },
+          { $group: { _id: "$opponentCards.name", wins: { $sum: 1 } } }
+        ]
+      }
+    },
+    {
+      $project: {
+        cards: { $concatArrays: ["$teamWins", "$opponentWins"] }
+      }
+    },
+    { $unwind: "$cards" },
+    { $group: {
+        _id: "$cards._id",
+        totalWins: { $sum: "$cards.wins" }
+      }
+    },
+    { $sort: { totalWins: -1 } },
+    { $limit: 10 }
+  ])
+
+  res.json({result})
+})
+
+app.get("/add-3", async (req, res) => {
+  const startDate = new Date("2025-04-01");
+  const endDate = new Date("2025-04-13");
+
+  const result = await Player
+    .aggregate([
+      { $unwind: "$battles" },
+      {
+        $match: {
+          "battles.battleTime": { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $project: {
+          cards: {
+            $getField: {
+              field: "cards",
+              input: { $arrayElemAt: ["$battles.team", 0] }
+            }
+          },
+          teamCrowns: {
+            $getField: {
+              field: "crowns",
+              input: { $arrayElemAt: ["$battles.team", 0] }
+            }
+          },
+          opponentCrowns: {
+            $getField: {
+              field: "crowns",
+              input: { $arrayElemAt: ["$battles.opponent", 0] }
+            }
+          },
+        }
+      },
+      { $unwind: "$cards" },
+      {
+        $group: {
+          _id: "$cards.name",
+          total: { $sum: 1 },
+          wins: {
+            $sum: {
+              $cond: [
+                { $gt: ["$teamCrowns", "$opponentCrowns"] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          carta: "$_id",
+          _id: 0,
+          total,
+          wins,
+          winRate: {
+            $cond: [
+              { $eq: ["$total", 0] },
+              0,
+              { $multiply: [{ $divide: ["$wins", "$total"] }, 100] }
+            ]
+          }
+        }
+      },
+      { $sort: { winRate: -1 } },
+      { $limit: 10 }
+  ])
+
   res.json({result})
 })
 
