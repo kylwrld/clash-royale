@@ -743,7 +743,7 @@ async function getCompleteDecks(percentage, timestamp1, timestamp2) {
 async function getLossCombo(cards, timestamp1, timestamp2) {
   const start = new Date(timestamp1);
   const end = new Date(timestamp2);
-  Z
+  
   const result = await Player.aggregate([
     { $unwind: "$battles" },
   
