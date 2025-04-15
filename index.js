@@ -165,8 +165,8 @@ app.get("/complete-deck", async (req, res) => {
   res.json({result})
 })
 
-app.get("/complete-deck", async (req, res) => {
-  const result = await getCompleteDecks(30, "2025-03-26", "2025-04-14");
+app.get("/loss-combo", async (req, res) => {
+  const result = await getLossCombo(["Zap", "Bandit"], "2025-03-26", "2025-04-14");
   // console.log(`Win %: ${win}, Loss %: ${loss}`);
   res.json({result})
 })
@@ -544,6 +544,80 @@ async function getCompleteDecks(percentage, timestamp1, timestamp2) {
     }
   ]);
   
+  console.log(result)
+  return result
+}
+
+async function getLossCombo(cards, timestamp1, timestamp2) {
+  const start = new Date(timestamp1);
+  const end = new Date(timestamp2);
+  Z
+  const result = await Player.aggregate([
+    { $unwind: "$battles" },
+  
+    {
+      $match: {
+        "battles.battleTime": { $gte: start, $lte: end }
+      }
+    },
+  
+    {
+      $project: {
+        deck: {
+          $map: {
+            input: {
+              $ifNull: [
+                {
+                  $getField: {
+                    field: "cards",
+                    input: { $arrayElemAt: ["$battles.team", 0] }
+                  }
+                },
+                []
+              ]
+            },
+            as: "card",
+            in: "$$card.name"
+          }
+        },
+        isDefeat: {
+          $lt: [
+            { $getField: { field: "crowns", input: { $arrayElemAt: ["$battles.team", 0] } } },
+            { $getField: { field: "crowns", input: { $arrayElemAt: ["$battles.opponent", 0] } } }
+          ]
+        }
+      }
+    },
+  
+    {
+      $addFields: {
+        hasCombo: {
+          $setIsSubset: [cards, "$deck"]
+        }
+      }
+    },
+  
+    {
+      $match: {
+        isDefeat: true,
+        hasCombo: true
+      }
+    },
+  
+    {
+      $group: {
+        _id: null,
+        defeatsWithCombo: { $sum: 1 }
+      }
+    },
+  
+    {
+      $project: {
+        _id: 0,
+        defeatsWithCombo: 1
+      }
+    }
+  ]);
   console.log(result)
   return result
 }
