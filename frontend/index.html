@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="shortcut icon" href="/images/favicon.ico"/>
+  <script src="/node_modules/chart.js/dist/chart.umd.js"></script>
+  <script href="https://cdnjs.com/libraries/Chart.js"></script>
   <title>Clash Royale - Estatísticas</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -16,20 +18,68 @@
     </header>
 
     <div class="btn-group">
-      <button onclick="">Desempenho da carta</button>
-      <button onclick="">Decks com alto desempenho</button>
-      <button onclick="">Derrotas com combo</button>
-      <button onclick="">Vitórias em desvantagem</button>
-      <button onclick="">Combos campeões</button>
+      <button id="desempenho-carta">Desempenho da carta</button>
+      <button id="decks-alto">Decks com alto desempenho</button>
+      <button id="derrota-combo">Derrotas com combo</button>
+      <button id="vitoria-desvantagem">Vitórias em desvantagem</button>
+      <button id="combo-campeoes">Combos campeões</button>
       <button onclick="">Cons</button>
       <button onclick="">Cons</button>
       <button onclick="">Cons</button>
     </div>
 
     <section id="resultado" class="resultado">
-      <!-- Os resultados aparecerão aqui -->
+      
     </section>
   </div>
-  <script src="/index.js"></script>
+  <script type="module">
+    let chart;
+    document.getElementById("desempenho-carta").addEventListener("click", async () => {
+      const response = await fetch("http://127.0.0.1:3000/1");
+      const data = await response.json();
+
+      const [win, loss] = data.result;
+
+      document.getElementById("resultado").innerHTML = `
+        <p><strong>Vitórias:</strong> ${win.toFixed(2)}%</p>
+        <p><strong>Derrotas:</strong> ${loss.toFixed(2)}%</p>
+        <canvas id="grafico" width="80" height="80"></canvas>
+      `;
+      const ctx = document.getElementById('grafico').getContext('2d');
+
+      if (chart) {
+          chart.destroy();
+        }
+
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: ['Vitórias (%)', 'Derrotas (%)'],
+          datasets: [{
+            label: 'Percentual',
+            data: [win, loss],
+            backgroundColor: ['#4caf50', '#f44336'],
+            borderColor: ['#388e3c', '#d32f2f'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            },
+            title: {
+              display: true,
+              text: 'Zap'
+            }
+          }
+        }
+      });
+
+    });
+
+    
+  </script>
 </body>
 </html>
