@@ -23,16 +23,18 @@
       <button id="derrota-combo">Derrotas com combo</button>
       <button id="vitoria-desvantagem">Vitórias em desvantagem</button>
       <button id="combo-campeoes">Combos campeões</button>
-      <button onclick="">Cons</button>
-      <button onclick="">Cons</button>
-      <button onclick="">Cons</button>
+      <button id="carta-mais-usada">Carta Mais Usada</button>
+      <button id="vitoris-por-carta">Vitórias por Carta</button>
+      <button id="porcetagem-vitoria">Porcentagem de Vitória</button>
     </div>
 
     <section id="resultado" class="resultado">
       
     </section>
+          <canvas id="grafico" width="80" height="80"></canvas>`;
   </div>
   <script type="module">
+    //1
     let chart;
     document.getElementById("desempenho-carta").addEventListener("click", async () => {
       const response = await fetch("http://127.0.0.1:3000/1");
@@ -79,7 +81,252 @@
 
     });
 
-    
+    //2
+    document.getElementById("decks-alto").addEventListener("click", async () => {
+      const response = await fetch("http://127.0.0.1:3000/2");
+      const data = await response.json();
+
+      const container = document.getElementById("resultado");
+      container.innerHTML = "";
+
+      if (data.result.length === 0) {
+        container.innerHTML = "<p>Nenhum deck encontrado com win rate acima de 30%.</p>";
+        return;
+      }
+
+      data.result.forEach(deckData => {
+        const deckElement = document.createElement("div");
+        deckElement.innerHTML = `
+          <p><strong>Deck:</strong> ${deckData.deck.join(", ")}</p>
+          <p><strong>Vitórias:</strong> ${deckData.victories}</p>
+          <p><strong>Total de Partidas:</strong> ${deckData.total}</p>
+          <p><strong>Win Rate:</strong> ${deckData.winRate.toFixed(2)}%</p>
+          <hr>
+        `;
+        container.appendChild(deckElement);
+      });
+    });
+
+    //3
+    document.getElementById("derrota-combo").addEventListener("click", async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:3000/3");
+        const data = await response.json();
+        
+        const result = data.result[0]?.defeatsWithCombo ?? 0;
+
+        document.getElementById("resultado").textContent =
+          `Número de derrotas com o combo Zap + Bandit: ${result}`;
+      } catch (error) {
+        document.getElementById("resultado").textContent =
+          "Erro ao buscar os dados.";
+        console.error(error);
+      }
+    });
+
+    //4
+    let chartInstance;
+    document.getElementById("vitoria-desvantagem").addEventListener("click", async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:3000/4");
+      const data = await response.json();
+
+      const count = data.result?.[0]?.victoryCount ?? 0;
+
+      document.getElementById("resultado").innerHTML =
+        `<p>Número de vitórias com a carta Zap (curta duração e desvantagem de troféus): ${count}</p>
+          <canvas id="grafico" width="80" height="80"></canvas>`;
+
+        const chartData = {
+        labels: ["Vitórias com Zap", "Outros casos"],
+        datasets: [{
+          label: "Distribuição de Vitórias",
+          data: [count, 100 - count], // Exemplo comparativo
+          backgroundColor: ["#36a2eb", "#e0e0e0"],
+          borderColor: ["#1e88e5", "#9e9e9e"],
+          borderWidth: 1
+        }]
+      };
+
+      const ctx = document.getElementById("grafico").getContext("2d");
+
+      // Destroi o gráfico anterior se já existir
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      // Cria o gráfico
+      chartInstance = new Chart(ctx, {
+        type: "doughnut",
+        data: chartData,
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: "bottom"
+            },
+            title: {
+              display: true,
+              text: "Vitórias com Zap em condições específicas"
+            }
+          }
+        }
+      });
+    } catch (error) {
+      document.getElementById("resultado").textContent =
+        "Erro ao buscar os dados.";
+      console.error("Erro ao buscar:", error);
+    }
+  });
+
+  //5
+  document.getElementById("combo-campeoes").addEventListener("click", async () => {
+    const comboDiv = document.getElementById("resultado");
+    comboDiv.innerHTML = "Buscando combinações...";
+
+    try {
+      const response = await fetch("http://127.0.0.1:3000/5");
+      const data = await response.json();
+
+      if (!data.result || data.result.length === 0) {
+        comboDiv.innerHTML = "Nenhuma combinação encontrada.";
+        return;
+      }
+      const html = data.result.map(c => `
+        <div style="margin-bottom: 10px; padding: 8px; border: 1px solid #ccc; border-radius: 8px;">
+          <strong>Combo:</strong> ${c.deck.join(", ")}<br/>
+          <strong>Vitórias:</strong> ${c.victories} | 
+          <strong>Total:</strong> ${c.total} |
+          <strong>Win Rate:</strong> ${c.winRate.toFixed(2)}%
+        </div>
+      `).join("");
+
+      comboDiv.innerHTML = `<h3>Combinações com win rate ≥ 60%</h3>${html}`;
+    } catch (error) {
+      console.error("Erro ao buscar combos:", error);
+      comboDiv.innerHTML = "Erro ao buscar os dados.";
+    }
+  });
+
+  //6
+  let chartUse = null;
+
+  document.getElementById("carta-mais-usada").addEventListener("click", async () => {
+    const statusDiv = document.getElementById("resultado");
+    const ctx = document.getElementById("grafico").getContext("2d");
+    statusDiv.innerHTML = "Buscando dados...";
+
+    try {
+      const response = await fetch("http://127.0.0.1:3000/add-1");
+      const data = await response.json();
+
+      if (!data.result || data.result.length === 0) {
+        statusDiv.innerHTML = "Nenhum dado encontrado.";
+        return;
+      }
+
+      const labels = data.result.map(card => card._id);
+      const counts = data.result.map(card => card.count);
+
+      if (chartUse) {
+        chartUse.destroy();
+      }
+
+      chartUse = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Aparições das Cartas',
+            data: counts,
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Top 10 Cartas Mais Usadas'
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                precision: 0
+              }
+            }
+          }
+        }
+      });
+
+      statusDiv.innerHTML = "";
+    } catch (error) {
+      console.error("Erro ao buscar cartas:", error);
+      statusDiv.innerHTML = "Erro ao buscar os dados.";
+    }
+  });
+
+  //7
+  document.getElementById("vitoris-por-carta").addEventListener("click", async () => {
+    const resultDiv = document.getElementById("resultado");
+    resultDiv.innerHTML = "Carregando...";
+
+    try {
+      const response = await fetch("http://127.0.0.1:3000/add-2");
+      const data = await response.json();
+
+      if (!data.result || data.result.length === 0) {
+        resultDiv.innerHTML = "Nenhuma carta encontrada.";
+        return;
+      }
+
+      // Mostra os dados em uma lista
+      let html = "<h3>Top 10 Cartas com Mais Vitórias:</h3><ul>";
+      data.result.forEach(card => {
+        html += `<li>${card._id}: ${card.totalWins} vitórias</li>`;
+      });
+      html += "</ul>";
+
+      resultDiv.innerHTML = html;
+
+    } catch (error) {
+      console.error("Erro ao buscar dados:", error);
+      resultDiv.innerHTML = "Erro ao buscar os dados.";
+    }
+  });
+
+  //8
+  document.getElementById("porcetagem-vitoria").addEventListener("click", async () => {
+    const resultDiv = document.getElementById("resultado");
+    resultDiv.innerHTML = "Buscando dados...";
+
+    try {
+      const response = await fetch("http://127.0.0.1:3000/add-3");
+      const data = await response.json();
+
+      if (!data.result || data.result.length === 0) {
+        resultDiv.innerHTML = "Nenhuma carta encontrada.";
+        return;
+      }
+
+      // Monta o HTML com os resultados
+      let html = "<h3>Top 10 Cartas com Maior Win Rate:</h3><ul>";
+      data.result.forEach(card => {
+        html += `<li>${card.carta}: ${card.winRate.toFixed(2)}%</li>`;
+      });
+      html += "</ul>";
+
+      resultDiv.innerHTML = html;
+    } catch (error) {
+      console.error("Erro ao buscar os dados:", error);
+      resultDiv.innerHTML = "Erro ao buscar os dados.";
+    }
+  });
+
   </script>
 </body>
 </html>
